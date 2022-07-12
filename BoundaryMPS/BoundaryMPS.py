@@ -24,6 +24,8 @@ class BoundaryMPS:
             return self.threeway_bmps(chi, cutoff)
         elif contraction_way == 'four':
             return self.fourway_bmps(chi, cutoff)
+        elif contraction_way == 'one':
+            return self.oneway_bmps(chi, cutoff)
         else:
             raise ValueError('Unkown contraction strategy choice.')
     
@@ -202,6 +204,42 @@ class BoundaryMPS:
         )
         
         return ladder_result
+
+    def matrix_merging(self, row_number):
+        l = len(self.mpos[row_number])
+        for j in range(l):
+            if j == 0 or j == l-1:
+                assert math.prod(self.mpos[row_number][j].shape) == max(self.mpos[row_number][j].shape)
+                self.mpos[row_number][j] = self.mpos[row_number][j].reshape(-1)
+            else:
+                assert math.prod(self.mpos[row_number][j].shape) == self.mpos[row_number][j].shape[1] * self.mpos[row_number][j].shape[3]
+                self.mpos[row_number][j] = self.mpos[row_number][j].reshape(self.mpos[row_number][j].shape[1], self.mpos[row_number][j].shape[3])
+        result = self.mpos[row_number][0]
+        for j in range(1, l):
+            result @= self.mpos[row_number][1]
+        
+        return result.reshape(-1)
+
+    def oneway_bmps(self, chi, cutoff):
+        self.exponent = 0.0
+        self.error = 0.0
+        for i in range(self.length-1):
+            logging.info('up contraction:')
+            merge_dims = []
+            for j in range(self.width):
+                merge_dims.append(self.contract((i+1, j), (i, j)))
+            if max(merge_dims) > chi:
+                logging.info('up canonical:')
+                for j in range(self.width-1):
+                    self.exponent += math.log10(self.canonical((i+1, j), (i+1, j+1)))
+                logging.info('up rounding:')
+                for j in range(self.width-1, 0, -1):
+                    self.exponent += math.log10(self.rounding((i+1, j), (i+1, j-1), chi, cutoff))
+
+        self.significand = self.matrix_merging(self.length-1)
+        self.result = (self.significand, self.exponent)
+        
+        return self.result, self.error
     
     def normal_bmps(self, chi, cutoff):
         self.exponent = 0.0
